@@ -210,9 +210,14 @@
         <div class="bg-white rounded-xl border border-[#dfe3e8] shadow-sm overflow-hidden">
           <div class="flex items-center justify-between px-5 py-4 border-b border-[#e1e3e5]">
             <h2 class="font-semibold text-[#111213]">Feature</h2>
-            <button onclick="openFeatureEditor(null)" class="px-4 h-9 rounded-md bg-[#008060] text-white text-sm font-medium hover:bg-[#006e52] transition-colors">
-              <i class="fas fa-plus mr-1"></i> Add new feature
-            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="resetAll()" class="px-4 h-9 rounded-md bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">
+                <i class="fas fa-rotate-left mr-1"></i> Reset All
+              </button>
+              <button onclick="openFeatureEditor(null)" class="px-4 h-9 rounded-md bg-[#008060] text-white text-sm font-medium hover:bg-[#006e52] transition-colors">
+                <i class="fas fa-plus mr-1"></i> Add new feature
+              </button>
+            </div>
           </div>
           <div class="overflow-x-auto">
             <table class="master-table w-full">
@@ -385,6 +390,7 @@
     let appsData = JSON.parse(localStorage.getItem(STORAGE_KEY + '_apps')) || recommendedApps;
     let purchased = JSON.parse(localStorage.getItem(STORAGE_KEY + '_purchased') || '{}');
     let purchaseDates = JSON.parse(localStorage.getItem(STORAGE_KEY + '_purchase_dates') || '{}');
+    let activated = JSON.parse(localStorage.getItem(STORAGE_KEY + '_activated') || '{}');
     let isEditing = false;
     let carouselIndex = 0;
     let currentScale = 100;
@@ -422,6 +428,7 @@
     // Persist helpers
     function persistFeatures() { localStorage.setItem(STORAGE_KEY, JSON.stringify(features)); }
     function persistPurchased() { localStorage.setItem(STORAGE_KEY + '_purchased', JSON.stringify(purchased)); }
+    function persistActivated() { localStorage.setItem(STORAGE_KEY + '_activated', JSON.stringify(activated)); }
     function findById(id) { return features.find(f => String(f.id) === String(id)); }
     function idxById(id) { return features.findIndex(f => String(f.id) === String(id)); }
 
@@ -476,8 +483,10 @@
         persistPurchased();
         localStorage.setItem(STORAGE_KEY + '_purchase_dates', JSON.stringify(purchaseDates));
         const f = findById(buyTargetId);
-        if (f) f.status = 'Enabled';
-        persistFeatures();
+        if (f && currentMode !== 'paid') {
+          f.status = 'Enabled';
+          persistFeatures();
+        }
       }
       closeBuyModal();
       renderGrid();
@@ -531,9 +540,9 @@
             setTimeout(() => {
               pendingActivation.delete(String(id));
               f.status = 'Enabled';
-              purchased[String(id)] = true;
+              activated[String(id)] = true;
               persistFeatures();
-              persistPurchased();
+              persistActivated();
               renderGrid();
             }, 3000);
           }, 1000);
@@ -597,8 +606,8 @@
       const isPaidType = f.type === 'paid';
       const isEnabled = f.status.toLowerCase() === 'enabled' || f.status.toLowerCase() === 'live';
       const isBought = !!purchased[f.id];
-      const isActivated = isPaidMode && isBought;
-      const isPending = isPaidMode && pendingActivation.has(String(f.id));
+      const isActivated = isPaidMode && !!activated[f.id];
+      const isPending = pendingActivation.has(String(f.id));
 
       const thumb = f.thumbnail || f.gif;
       const media = f.media || f.gif;
@@ -629,10 +638,10 @@
             </label>
           </div>`;
       } else {
-        const expiryDate = (isBought && purchaseDates[f.id])
+        const expiryDate = (!isPaidMode && isBought && purchaseDates[f.id])
           ? new Date(purchaseDates[f.id] + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : null;
-        const priceHtml = !isPaidMode && isPaidType && f.cost
+        const priceHtml = isPaidType && f.cost && (!isPaidMode || !isBought)
           ? `<div class="flex flex-col items-end shrink-0">
                <span class="text-[#008060] font-bold text-sm whitespace-nowrap">$${f.cost}/mo</span>
                ${expiryDate ? `<span class="text-[10px] text-[#6d7175] whitespace-nowrap">Expires: ${expiryDate}</span>` : ''}
@@ -652,7 +661,9 @@
       let buttonsRow = '';
       if (isPaidMode) {
         if (!isActivated) {
-          if (isPending) {
+          if (isPaidType && !isBought) {
+            buttonsRow = `<button onclick="openBuyModal('${f.id}')" class="flex-1 h-8 rounded-lg bg-[#008060] text-white text-[10px] font-bold px-2 hover:bg-[#006e52] transition-all">Buy</button>`;
+          } else if (isPending) {
             buttonsRow = `
               <button disabled class="flex-1 h-8 rounded-lg bg-[#008060]/60 text-white text-[10px] font-bold px-2 cursor-not-allowed flex items-center justify-center gap-1.5">
                 <svg class="animate-spin h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
@@ -704,9 +715,12 @@
         statusBadge = `<div class="absolute top-4 right-4 z-40 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${badgeColor}" onclick="event.stopPropagation()">${f.status}</div>`;
       }
 
-      const statusLabel = (isPaidMode && isActivated)
+      const statusLabel = isActivated
         ? (isEnabled ? 'Enabled' : 'Disabled')
         : (isEnabled ? 'Enabled' : 'Locked');
+      const paidActivatedExpiry = (isActivated && isPaidType && purchaseDates[f.id])
+        ? new Date(purchaseDates[f.id] + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : null;
       return `
         <div class="relative h-3/4 bg-[#f8f9fa] ${isEditing ? 'cursor-default' : 'cursor-zoom-in'} overflow-hidden rounded-t-2xl"
              onmouseenter="showPreview(this, '${media}')"
@@ -727,6 +741,7 @@
         </div>
         <div class="h-1/4 p-4 relative flex flex-col justify-center bg-white rounded-b-2xl border-t border-[#f1f2f3]">
           ${titleRow}
+          ${paidActivatedExpiry ? `<div class="text-center text-[10px] text-[#6d7175] -mt-1 mb-1">Expires: ${paidActivatedExpiry}</div>` : ''}
           ${buttonsRow ? `<div class="flex items-center gap-2">${buttonsRow}</div>` : ''}
         </div>
       `;
@@ -866,6 +881,21 @@
       const idx = idxById(id);
       if (idx >= 0) features.splice(idx, 1);
       persistFeatures();
+      renderMaster();
+      renderGrid();
+    }
+
+    function resetAll() {
+      if (!confirm('Reset all features to Locked and clear all purchase/activation data?')) return;
+      features.forEach(f => { f.status = 'Locked'; });
+      purchased = {};
+      purchaseDates = {};
+      activated = {};
+      persistFeatures();
+      persistPurchased();
+      localStorage.setItem(STORAGE_KEY + '_purchase_dates', JSON.stringify(purchaseDates));
+      persistActivated();
+      pendingActivation.clear();
       renderMaster();
       renderGrid();
     }
