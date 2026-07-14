@@ -733,16 +733,21 @@
       const enableBtn = `<button onclick="activateFeature('${f.id}')" class="flex-1 h-8 rounded-lg bg-[#008060] text-white text-[10px] font-bold px-2 hover:bg-[#006e52] transition-all">Click to Enable</button>`;
 
       if (isPaidType) {
+        // Expiry is always counted from the purchase date, not the enable date —
+        // so it must be visible even while the card still shows "Click to Enable".
+        const expiryDate = purchaseDates[f.id]
+          ? new Date(purchaseDates[f.id] + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : null;
         if (!isBought) {
           buttonsRow = `<button onclick="openBuyModal('${f.id}')" class="flex-1 h-8 rounded-lg bg-[#008060] text-white text-[10px] font-bold px-2 hover:bg-[#006e52] transition-all">Subscribe</button>`;
         } else if (!isActivated) {
           // Subscribed but not yet enabled — user still needs to run the chat enable flow.
           buttonsRow = isPending ? pendingBtn : enableBtn;
+          if (expiryDate) {
+            metaRow = `<div class="text-center text-[10px] text-[#6d7175] mt-1">Expires: ${expiryDate}</div>`;
+          }
         } else {
           // Subscribed AND enabled — show Unsubscribe + expiry below.
-          const expiryDate = purchaseDates[f.id]
-            ? new Date(purchaseDates[f.id] + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : null;
           buttonsRow = `<button onclick="openUnsubModal('${f.id}')" class="flex-1 h-8 rounded-lg bg-[#6d7175] text-white text-[10px] font-bold px-2 hover:bg-[#4a4d50] transition-all">Unsubscribe</button>`;
           if (expiryDate) {
             metaRow = `<div class="text-center text-[10px] text-[#6d7175] mt-1">Expires: ${expiryDate}</div>`;
